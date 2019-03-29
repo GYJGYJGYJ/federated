@@ -24,6 +24,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow_federated.python.core.utils.computation_utils import IterativeProcess
+from tensorflow_federated.python.core.utils.computation_utils import update_state
 from tensorflow_federated.python.core.utils.tf_computation_utils import assign
 from tensorflow_federated.python.core.utils.tf_computation_utils import get_variables
 from tensorflow_federated.python.core.utils.tf_computation_utils import identity
@@ -34,4 +35,5 @@ _allowed_symbols = [
     "assign",
     "get_variables",
     "identity",
+    "update_state"
 ]

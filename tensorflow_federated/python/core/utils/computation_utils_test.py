@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 from absl.testing import absltest
 import six
 from six.moves import range
@@ -49,6 +50,17 @@ def count_int32(current):
 
 
 class ComputationUtilsTest(absltest.TestCase):
+
+  def test_update_state(self):
+    MyTuple = collections.namedtuple('MyTuple', 'a b c')  # pylint:disable=invalid-name
+    t = MyTuple(1, 2, 3)
+    t2 = computation_utils.update_state(t, c=7)
+    self.assertEqual(t2, MyTuple(1, 2, 7))
+    t3 = computation_utils.update_state(t2, a=8)
+    self.assertEqual(t3, MyTuple(8, 2, 7))
+
+    with six.assertRaisesRegex(self, TypeError, r'state.*namedtuple'):
+      computation_utils.update_state((1, 2, 3), a=8)
 
   def test_iterative_process_state_only(self):
     iterative_process = computation_utils.IterativeProcess(
@@ -85,7 +97,7 @@ class ComputationUtilsTest(absltest.TestCase):
 
   def test_iterative_process_initialize_bad_type(self):
     with six.assertRaisesRegex(self, TypeError,
-                               r'Expected .*\.Computation, .*'):
+                               r'Expected a callable.*'):
       _ = computation_utils.IterativeProcess(
           initialize_fn=None, next_fn=add_int32)
 
@@ -102,7 +114,7 @@ class ComputationUtilsTest(absltest.TestCase):
 
   def test_iterative_process_next_bad_type(self):
     with six.assertRaisesRegex(self, TypeError,
-                               r'Expected .*\.Computation, .*'):
+                               r'Expected a callable.*'):
       _ = computation_utils.IterativeProcess(
           initialize_fn=initialize, next_fn=None)
 

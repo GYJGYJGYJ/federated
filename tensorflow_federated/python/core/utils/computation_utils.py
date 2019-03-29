@@ -21,6 +21,22 @@ from tensorflow_federated.python.common_libs import py_typecheck
 from tensorflow_federated.python.core import api as tff
 
 
+def update_state(state, **kwargs):
+  """Returns a new `state` (a namedtuple) with updated with kwargs."""
+  if not isinstance(state, tuple) or not (isinstance(
+      getattr(state, '_fields', None), tuple)):
+    raise TypeError('state must be a namedtuple, but found {}'.format(state))
+  d = state._asdict()
+  d.update(kwargs)
+  return state.__class__(**d)
+
+
+# DO NOT SUBMIT For now I just relax to the checks in this class to allow
+# regular python functions instead of requiring computations, as for
+# aggregators it makes more sense for the initialization function to be a pure
+# python tensorflow function rather than a TFF computation since it's going to
+# be used inside other tensorflow to construct the initial state. Docs need to
+# be updated in any case.
 class IterativeProcess(object):
   """A process that includes an initialization and iterated computation.
 
@@ -69,36 +85,41 @@ class IterativeProcess(object):
       TypeError: `initialize_fn` and `next_fn` are not compatible function
         types.
     """
-    py_typecheck.check_type(initialize_fn, tff.Computation)
-    if initialize_fn.type_signature.parameter is not None:
-      raise TypeError('initialize_fn must be a no-arg tff.Computation')
-    initialize_result_type = initialize_fn.type_signature.result
+    py_typecheck.check_callable(initialize_fn)
+    py_typecheck.check_callable(next_fn)
 
-    py_typecheck.check_type(next_fn, tff.Computation)
-    if isinstance(next_fn.type_signature.parameter, tff.NamedTupleType):
-      next_first_param_type = next_fn.type_signature.parameter[0]
-    else:
-      next_first_param_type = next_fn.type_signature.parameter
-    if initialize_result_type != next_first_param_type:
-      raise TypeError('The return type of initialize_fn should match the '
-                      'first parameter of next_fn, but found\n'
-                      'initialize_fn.type_signature.result={}\n'
-                      'next_fn.type_signature.parameter[0]={}'.format(
-                          initialize_result_type, next_first_param_type))
+    if isinstance(initialize_fn, tff.Computation) and isinstance(
+        next_fn, tff.Computation):
+      # We provide stronger checks in the case of two tff.Computations:
+      if initialize_fn.type_signature.parameter is not None:
+        raise TypeError('initialize_fn must be a no-arg tff.Computation')
+      initialize_result_type = initialize_fn.type_signature.result
 
-    next_result_type = next_fn.type_signature.result
-    if next_first_param_type != next_result_type:
-      # This might be multiple output next_fn, check if the first argument might
-      # be the state. If still not the right type, raise and error.
-      if isinstance(next_result_type, tff.NamedTupleType):
-        next_result_type = next_result_type[0]
+      if isinstance(next_fn.type_signature.parameter, tff.NamedTupleType):
+        next_first_param_type = next_fn.type_signature.parameter[0]
+      else:
+        next_first_param_type = next_fn.type_signature.parameter
+      if initialize_result_type != next_first_param_type:
+        raise TypeError('The return type of initialize_fn should match the '
+                        'first parameter of next_fn, but found\n'
+                        'initialize_fn.type_signature.result={}\n'
+                        'next_fn.type_signature.parameter[0]={}'.format(
+                            initialize_result_type, next_first_param_type))
+
+      next_result_type = next_fn.type_signature.result
       if next_first_param_type != next_result_type:
-        raise TypeError('The return type of next_fn should match the '
-                        'first parameter, but found\n'
-                        'next_fn.type_signature.parameter[0]={}\n'
-                        'next_fn.type_signature.result={}'.format(
-                            next_first_param_type,
-                            next_fn.type_signature.result))
+        # This might be multiple output next_fn, check if the first argument
+        # might be the state. If still not the right type, raise and error.
+        if isinstance(next_result_type, tff.NamedTupleType):
+          next_result_type = next_result_type[0]
+        if next_first_param_type != next_result_type:
+          raise TypeError('The return type of next_fn should match the '
+                          'first parameter, but found\n'
+                          'next_fn.type_signature.parameter[0]={}\n'
+                          'next_fn.type_signature.result={}'.format(
+                              next_first_param_type,
+                              next_fn.type_signature.result))
+
     self._initialize_fn = initialize_fn
     self._next_fn = next_fn
 
@@ -119,3 +140,7 @@ class IterativeProcess(object):
       A `tff.Computation`.
     """
     return self._next_fn
+
+  def __call__(self, *args, **kwargs):
+    """Shorthand for self.next(*args, **kwargs)."""
+    return self._next_fn(*args, **kwargs)
