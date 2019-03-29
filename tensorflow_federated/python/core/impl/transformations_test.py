@@ -48,6 +48,15 @@ def _to_building_block(comp):
   return computation_building_blocks.ComputationBuildingBlock.from_proto(proto)
 
 
+class TrivialSubclass(transformations.CompTracker):
+
+  def update(self, comp):
+    pass
+
+  def __str__(self):
+    return 'TrivialSubclass'
+
+
 class TransformationsTest(absltest.TestCase):
 
   def test_transform_postorder_with_lambda_call_selection_and_reference(self):
@@ -84,6 +93,45 @@ class TransformationsTest(absltest.TestCase):
         'F6((foo_arg -> F5(F2(F1(foo_arg)[0])(F4(F3(foo_arg)[1])))))')
 
   # TODO(b/113123410): Add more tests for corner cases of `transform_preorder`.
+
+  def test_comptracker_trivial_subclass_initialization(self):
+
+    trivial_instance = TrivialSubclass('trivial_name', None)
+
+    self.assertEqual(trivial_instance.name, 'trivial_name')
+    self.assertEmpty(trivial_instance.children)
+    self.assertIsNone(trivial_instance.value)
+    self.assertIsNone(trivial_instance.parent)
+    self.assertIsNone(trivial_instance.younger_sibling)
+    self.assertIsNone(trivial_instance.older_sibling)
+
+  def test_comptracker_trivial_subclass_parent_child(self):
+    trivial_instance = TrivialSubclass('trivial_name', None)
+    second_trivial_instance = TrivialSubclass('second_trivial_name', None)
+
+    self.assertNotEqual(trivial_instance, second_trivial_instance)
+    second_trivial_instance.set_parent(trivial_instance)
+    trivial_instance.add_child(0, second_trivial_instance)
+    self.assertEqual(trivial_instance.get_child(0), second_trivial_instance)
+    self.assertIsNone(trivial_instance.get_child(1))
+    self.assertEqual(second_trivial_instance.parent, trivial_instance)
+
+  def test_comptracker_trivial_subclass_sibling(self):
+    trivial_instance = TrivialSubclass('trivial_name', None)
+    second_trivial_instance = TrivialSubclass('second_trivial_name', None)
+
+    self.assertNotEqual(trivial_instance, second_trivial_instance)
+    trivial_instance.set_younger_sibling(second_trivial_instance)
+    self.assertEqual(trivial_instance.younger_sibling, second_trivial_instance)
+    second_trivial_instance.set_older_sibling(trivial_instance)
+    self.assertEqual(second_trivial_instance.older_sibling, trivial_instance)
+
+  def test_outer_context_pointer(self):
+    outer_context = transformations.OuterContextPointer()
+    other_outer_context = transformations.OuterContextPointer()
+    self.assertNotEqual(id(outer_context), id(other_outer_context))
+    self.assertEqual(str(outer_context), 'OuterContext')
+    self.assertEqual(outer_context, other_outer_context)
 
   def test_name_compiled_computations(self):
     plus = computations.tf_computation(lambda x, y: x + y, [tf.int32, tf.int32])

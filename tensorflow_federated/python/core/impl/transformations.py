@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import collections
 
 import six
 
@@ -98,6 +99,130 @@ def transform_postorder(comp, fn):
   else:
     raise NotImplementedError(
         'Unrecognized computation building block: {}'.format(str(comp)))
+
+
+@six.add_metaclass(abc.ABCMeta)
+class CompTracker(object):
+  """Abstract class representing a node in a `ContextTree`.
+
+  `CompTracker` nodes are designed to be constructed and pushed into
+  a `ContextTree` as an AST representing a given computation is walked.
+
+  Each `CompTracker` represents a variable binding in the AST, and the
+  parent-child and older-younger sibling relationships determine how
+  the `ContextTree` is to be walked in order to resolve variables and track
+  their values in the AST.
+
+  Parent-child relationships represent relationships between levels of the AST,
+  meaning, moving through an AST node which defines a variable scope in preorder
+  corresponds to moving from a `CompTracker` to one of its children, and moving
+  through
+  such a node postorder corresponds to moving from a `CompTracker` to its
+  parent.
+
+  Sibling-sibling relationships are particular to sequential binding of
+  variables in `computation_building_blocks.Block` constructs; binding
+  a new variable in such a construct corresponds to moving from a `CompTracker`
+  to its (unique) younger sibling.
+  """
+
+  def __init__(self, name, value):
+    self.name = name
+    self.value = value
+    self.children = collections.OrderedDict()
+    self.parent = None
+    self.older_sibling = None
+    self.younger_sibling = None
+
+  def set_parent(self, node):
+    """Sets the parent scope of `self` to the binding embodied by `node`."""
+    py_typecheck.check_type(node, CompTracker)
+    self.parent = node
+
+  def set_older_sibling(self, node):
+    """Sets the older sibling scope of `self` to `node`."""
+    py_typecheck.check_type(node, CompTracker)
+    self.older_sibling = node
+
+  def set_younger_sibling(self, node):
+    """Sets the younger sibling scope of `self` to `node`.
+
+    This corresponds to binding a new variable in a
+    `computation_building_blocks.Block` construct.
+
+    Args:
+      node: Instance of `CompTracker` representing this new binding.
+    """
+    py_typecheck.check_type(node, CompTracker)
+    self.younger_sibling = node
+
+  def add_child(self, comp_id, node):
+    """Sets the child scope of `self` indexed by `comp_id` to `node`.
+
+    This corresponds to encountering a node in a TFF AST which defines a
+    variable scope.
+
+    Args:
+      comp_id: The identifier of the computation generating this scope.
+      node: Instance of `CompTracker` representing this new binding.
+    """
+    py_typecheck.check_type(node, CompTracker)
+    self.children[comp_id] = node
+
+  def get_child(self, comp_id):
+    """Returns the child of `self` identified by `comp_id` if one exists.
+
+    Returns None if there is no such node.
+
+    Args:
+      comp_id: Integer used to address child of `self` by position of
+        corresponding AST node in a preorder traversal of the AST.
+
+    Returns:
+      Instance of `CompTracker` if an appropriate child of `self` exists,
+        or `None`.
+    """
+    return self.children.get(comp_id)
+
+  def __ne__(self, other):
+    return not self == other
+
+  @abc.abstractmethod
+  def update(self, comp=None):
+    """Abstract method defining the way information is read into this node."""
+    pass
+
+  @abc.abstractmethod
+  def __str__(self):
+    """Abstract string method requireid as `ContextTree` will delegate."""
+    pass
+
+
+class OuterContextPointer(CompTracker):
+  """Sentinel node class representing the context 'outside' a given AST."""
+
+  def __init__(self, name=None, value=None):
+    super(OuterContextPointer, self).__init__('OuterContext', None)
+
+  def update(self, comp=None):
+    raise ValueError('We shouldn\'t be trying to update the outer context.')
+
+  def __str__(self):
+    return self.name
+
+  def __eq__(self, other):
+    """Returns `True` if `other` is also an `OuterContextPointer`.
+
+    OuterContextPointer simply refers to a global notion of 'external',
+    so all instances are identical--"outside" of every building is the same.
+
+    Args:
+      other: Value for equality comparison.
+
+    Returns:
+      Returns true iff `other` is also an instance of `OuterContextPointer`.
+    """
+    return isinstance(other, OuterContextPointer)
 
 
 def name_compiled_computations(comp):
