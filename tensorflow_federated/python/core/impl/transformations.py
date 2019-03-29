@@ -212,6 +212,45 @@ def replace_called_lambdas_with_block(comp):
   return transform_postorder(comp, _transform)
 
 
+def remove_mapped_or_applied_identity(comp):
+  """Removes nodes representing mapping or applying the identity function.
+
+  Args:
+    comp: Instance of `computation_building_blocks.ComputationBuildingBlock`, to
+      check for a mapped or applied identity function which can be removed.
+
+  Returns:
+    A possibly transformed version of comp, which is identical except that a
+      mapped or applied identity function is replaced with its argument.
+  """
+
+  def represents_identity(comp):
+    """Helper function to check if `comp` represents the identity function."""
+    if not isinstance(comp, computation_building_blocks.Lambda):
+      return False
+    else:
+      if isinstance(comp.result, computation_building_blocks.Reference):
+        if comp.parameter_name == comp.result.name:
+          return True
+    return False
+
+  def _transform(comp):
+    """Transform function for removal of intrinsics representing identity."""
+    if isinstance(comp, computation_building_blocks.Call):
+      if isinstance(comp.function, computation_building_blocks.Intrinsic):
+        if comp.function.uri in [
+            'federated_map', 'federated_apply', 'sequence_map'
+        ]:
+          call_elements = anonymous_tuple.to_elements(comp.argument)
+          called_function = call_elements[0][1]
+          called_arg = call_elements[1][1]
+          if represents_identity(called_function):
+            return called_arg
+    return comp
+
+  return transform_postorder(comp, _transform)
+
+
 @six.add_metaclass(abc.ABCMeta)
 class ScopedSnapshot(object):
   """Callable to allow for taking snapshot of scopes (contexts) in an AST.
